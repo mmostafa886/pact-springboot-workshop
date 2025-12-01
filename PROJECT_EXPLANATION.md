@@ -12,65 +12,960 @@
 
 ## 1. What is Spring Boot?
 
-**Spring Boot** is an opinionated framework built on top of the Spring Framework that simplifies the creation of production-ready applications. It provides:
+**Spring Boot** is an opinionated framework built on top of the Spring Framework that simplifies the creation of production-ready applications. It was created by Pivotal (now part of VMware) to address the complexity and configuration overhead of traditional Spring applications.
 
-### Key Features
+### The Problem Before Spring Boot
 
-- **Auto-configuration**: Automatically configures your application based on dependencies in your classpath
-- **Embedded servers**: Includes Tomcat, Jetty, or Undertow - no need to deploy WAR files
-- **Starter dependencies**: Pre-configured dependency groups (like `spring-boot-starter-web`)
-- **Production-ready features**: Health checks, metrics, externalized configuration
-- **No code generation**: No XML configuration required
+Traditional Spring applications required:
+
+**1. Extensive XML Configuration**
+```xml
+<!-- applicationContext.xml - Traditional Spring -->
+<beans xmlns="http://www.springframework.org/schema/beans">
+    <bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource">
+        <property name="driverClassName" value="org.h2.Driver"/>
+        <property name="url" value="jdbc:h2:mem:testdb"/>
+        <property name="username" value="sa"/>
+        <property name="password" value=""/>
+    </bean>
+
+    <bean id="entityManagerFactory" class="org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="packagesToScan" value="com.example.model"/>
+        <!-- ... dozens more properties ... -->
+    </bean>
+
+    <bean id="transactionManager" class="org.springframework.orm.jpa.JpaTransactionManager">
+        <property name="entityManagerFactory" ref="entityManagerFactory"/>
+    </bean>
+
+    <!-- ... hundreds of lines of XML ... -->
+</beans>
+```
+
+**2. Manual Dependency Management**
+```xml
+<!-- pom.xml - Traditional Spring -->
+<dependencies>
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-core</artifactId>
+        <version>5.3.10</version>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-context</artifactId>
+        <version>5.3.10</version>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-web</artifactId>
+        <version>5.3.10</version>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-webmvc</artifactId>
+        <version>5.3.10</version>
+    </dependency>
+    <!-- ... manually managing 20+ dependencies ... -->
+</dependencies>
+```
+
+**3. Complex Server Deployment**
+- Package application as WAR file
+- Install and configure Tomcat/JBoss/WebLogic separately
+- Deploy WAR to external server
+- Manage server configuration files
+- Handle classpath conflicts
+
+**4. Boilerplate Configuration Code**
+```java
+// Traditional Spring - WebConfig.java
+@Configuration
+@EnableWebMvc
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void configureViewResolvers(ViewResolverRegistry registry) {
+        InternalResourceViewResolver resolver = new InternalResourceViewResolver();
+        resolver.setPrefix("/WEB-INF/views/");
+        resolver.setSuffix(".jsp");
+        registry.viewResolver(resolver);
+    }
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/resources/**")
+                .addResourceLocations("/resources/");
+    }
+
+    @Bean
+    public DataSource dataSource() {
+        BasicDataSource dataSource = new BasicDataSource();
+        dataSource.setDriverClassName("org.h2.Driver");
+        dataSource.setUrl("jdbc:h2:mem:testdb");
+        dataSource.setUsername("sa");
+        dataSource.setPassword("");
+        return dataSource;
+    }
+
+    // ... 100+ lines of configuration code ...
+}
+```
+
+### How Spring Boot Solves These Problems
+
+**Spring Boot** applies the **"Convention over Configuration"** principle:
+
+#### 1. Auto-Configuration Magic
+
+**Before (Traditional Spring):**
+```java
+// Manually configure dozens of beans
+@Configuration
+public class AppConfig {
+    @Bean
+    public DataSource dataSource() { /* ... */ }
+
+    @Bean
+    public EntityManagerFactory entityManagerFactory() { /* ... */ }
+
+    @Bean
+    public PlatformTransactionManager transactionManager() { /* ... */ }
+
+    @Bean
+    public RestTemplate restTemplate() {
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(5000);
+        return new RestTemplate(factory);
+    }
+    // ... dozens more beans ...
+}
+```
+
+**After (Spring Boot):**
+```java
+// Spring Boot auto-configures everything
+@SpringBootApplication
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+
+    // Optional: Override only what you need
+    @Bean
+    public RestTemplate restTemplate(RestTemplateBuilder builder) {
+        return builder.build(); // That's it!
+    }
+}
+```
+
+Spring Boot detects:
+- H2 on classpath → Auto-configures in-memory database
+- `spring-boot-starter-web` → Auto-configures Tomcat, Spring MVC, JSON serialization
+- JPA on classpath → Auto-configures EntityManager, TransactionManager
+- Thymeleaf on classpath → Auto-configures template engine
+
+#### 2. Starter Dependencies
+
+**Before (Traditional Spring):**
+```xml
+<!-- Managing 15+ dependencies for a web app -->
+<dependencies>
+    <dependency><groupId>org.springframework</groupId><artifactId>spring-core</artifactId><version>5.3.10</version></dependency>
+    <dependency><groupId>org.springframework</groupId><artifactId>spring-web</artifactId><version>5.3.10</version></dependency>
+    <dependency><groupId>org.springframework</groupId><artifactId>spring-webmvc</artifactId><version>5.3.10</version></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.12.3</version></dependency>
+    <dependency><groupId>javax.servlet</groupId><artifactId>javax.servlet-api</artifactId><version>4.0.1</version></dependency>
+    <!-- ... 10 more dependencies ... -->
+</dependencies>
+```
+
+**After (Spring Boot):**
+```xml
+<!-- One starter includes everything needed for web apps -->
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+</dependencies>
+```
+
+The `spring-boot-starter-web` includes:
+- Spring MVC (web framework)
+- Tomcat (embedded server)
+- Jackson (JSON processing)
+- Validation API
+- All compatible versions
+
+**Common Starters:**
+- `spring-boot-starter-web`: Web applications
+- `spring-boot-starter-data-jpa`: Database access with JPA
+- `spring-boot-starter-security`: Authentication and authorization
+- `spring-boot-starter-test`: Testing with JUnit, Mockito, AssertJ
+- `spring-boot-starter-thymeleaf`: Template engine
+
+#### 3. Embedded Servers
+
+**Before (Traditional Spring):**
+```bash
+# Complex deployment process
+1. Package application:
+   mvn clean package
+   # Produces: myapp.war
+
+2. Install Tomcat:
+   - Download Tomcat 9.0.x
+   - Extract to /opt/tomcat
+   - Configure server.xml, context.xml, tomcat-users.xml
+
+3. Deploy:
+   cp myapp.war /opt/tomcat/webapps/
+
+4. Start server:
+   /opt/tomcat/bin/startup.sh
+
+5. Check logs:
+   tail -f /opt/tomcat/logs/catalina.out
+```
+
+**After (Spring Boot):**
+```bash
+# Simple one-step execution
+mvn spring-boot:run
+# Application runs immediately with embedded Tomcat!
+
+# Or as a JAR:
+mvn package
+java -jar target/myapp.jar
+```
+
+Spring Boot embeds Tomcat **inside the JAR**:
+```
+myapp.jar
+├── BOOT-INF/
+│   ├── classes/        (Your application code)
+│   └── lib/            (Dependencies + embedded Tomcat)
+├── META-INF/
+└── org/springframework/boot/loader/  (Boot launcher)
+```
+
+#### 4. Production-Ready Features
+
+Spring Boot includes **Spring Boot Actuator** for monitoring:
+
+```java
+// Just add dependency - no configuration needed
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+```
+
+**Instant endpoints:**
+- `GET /actuator/health` - Application health status
+- `GET /actuator/metrics` - Performance metrics
+- `GET /actuator/info` - Application information
+- `GET /actuator/env` - Environment properties
+- `GET /actuator/loggers` - Log configuration
+
+**Example response:**
+```json
+// GET /actuator/health
+{
+  "status": "UP",
+  "components": {
+    "db": {
+      "status": "UP",
+      "details": {
+        "database": "H2",
+        "validationQuery": "SELECT 1"
+      }
+    },
+    "diskSpace": {
+      "status": "UP",
+      "details": {
+        "total": 499963174912,
+        "free": 91897569280,
+        "threshold": 10485760
+      }
+    }
+  }
+}
+```
+
+#### 5. Externalized Configuration
+
+**Before (Traditional Spring):**
+```java
+// Hardcoded or complex property loading
+public class AppConfig {
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/mydb"; // Hardcoded!
+
+    // Or complex PropertyPlaceholderConfigurer setup
+}
+```
+
+**After (Spring Boot):**
+```properties
+# application.properties - automatically loaded
+server.port=8080
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.datasource.username=sa
+serviceClients.products.baseUrl=http://localhost:9000
+```
+
+```java
+// Automatically injected
+@Value("${serviceClients.products.baseUrl}")
+private String baseUrl;
+```
+
+**Profile-based configuration:**
+```
+application.properties          # Default
+application-dev.properties      # Development
+application-prod.properties     # Production
+```
+
+```bash
+# Run with specific profile
+java -jar app.jar --spring.profiles.active=prod
+```
+
+### Key Features Summary
+
+| Feature | Traditional Spring | Spring Boot |
+|---------|-------------------|-------------|
+| **Configuration** | 100s of lines of XML/Java config | `@SpringBootApplication` |
+| **Dependencies** | Manage 20+ individual dependencies | One starter dependency |
+| **Server** | External Tomcat installation | Embedded in JAR |
+| **Setup Time** | Hours to days | Minutes |
+| **Deployment** | WAR to external server | Executable JAR |
+| **Monitoring** | Manual setup | Built-in actuator |
 
 ### In This Project
 
 Spring Boot manages:
-- Web application infrastructure
-- Dependency injection container
-- REST endpoints
-- Testing infrastructure
-- Database connections (for the provider)
+- **Web application infrastructure**: Embedded Tomcat server, Spring MVC framework
+- **Dependency injection container**: IoC container managing all beans
+- **REST endpoints**: `@RestController` components with JSON serialization
+- **Testing infrastructure**: JUnit 5, MockMvc, test slices
+- **Database connections**: H2 DataSource, JPA EntityManager (for the provider)
+- **Security**: Bearer token authentication filter
+- **Configuration**: Properties injection via `@Value`
 
 ---
 
 ## 2. Why Do We Need Annotations Like @Autowired?
 
-### The Problem Annotations Solve
+### The Evolution of Object Creation in Java
 
-**Without dependency injection**, you'd manually create objects:
+To understand why annotations are crucial, let's see how Java applications evolved:
+
+#### Era 1: Manual Object Creation (The Dark Ages)
+
+**The Traditional Approach:**
 
 ```java
-public class ProductServiceClient {
-    private RestTemplate restTemplate = new RestTemplate(); // Tight coupling!
+// UserController.java
+public class UserController {
+    private UserService userService;
+
+    public UserController() {
+        // Manually create all dependencies
+        DatabaseConnection dbConnection = new DatabaseConnection("localhost", 5432, "mydb", "user", "pass");
+        UserRepository userRepository = new UserRepositoryImpl(dbConnection);
+        EmailService emailService = new SmtpEmailService("smtp.gmail.com", 587);
+        Logger logger = new FileLogger("/var/log/app.log");
+        this.userService = new UserService(userRepository, emailService, logger);
+    }
+
+    public User getUser(Long id) {
+        return userService.findById(id);
+    }
 }
 ```
 
-**Problems with this approach:**
-- **Tight coupling**: Hard to replace implementations
-- **Testing difficulties**: Can't easily mock dependencies
-- **Configuration management**: Hard to manage object lifecycle
-- **Code duplication**: Creating same objects everywhere
-- **Scalability issues**: Difficult to manage complex dependency graphs
+**Real-World Example:**
 
-### How @Autowired Solves This
+```java
+// ProductServiceClient.java - Without Dependency Injection
+public class ProductServiceClient {
+    private RestTemplate restTemplate;
+    private String baseUrl;
+    private int connectTimeout;
+    private int readTimeout;
 
+    public ProductServiceClient() {
+        // Hardcoded configuration
+        this.baseUrl = "http://localhost:9000";
+        this.connectTimeout = 5000;
+        this.readTimeout = 5000;
+
+        // Manual object creation
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
+        factory.setConnectTimeout(this.connectTimeout);
+        factory.setReadTimeout(this.readTimeout);
+        this.restTemplate = new RestTemplate(factory);
+    }
+
+    public List<Product> fetchProducts() {
+        String url = baseUrl + "/products";
+        ProductServiceResponse response = restTemplate.getForObject(url, ProductServiceResponse.class);
+        return response.getProducts();
+    }
+}
+```
+
+**Problems with Manual Creation:**
+
+**1. Tight Coupling**
+```java
+// ProductServiceClient is TIGHTLY COUPLED to RestTemplate implementation
+public class ProductServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Cannot change!
+
+    // What if you want to use WebClient instead?
+    // You must modify THIS class - violates Open/Closed Principle
+}
+```
+
+**2. Testing Nightmare**
+```java
+// ProductServiceClientTest.java
+public class ProductServiceClientTest {
+    @Test
+    public void testFetchProducts() {
+        ProductServiceClient client = new ProductServiceClient();
+
+        // How do you test this without making REAL HTTP calls?
+        // You can't! The RestTemplate is hardcoded inside.
+        List<Product> products = client.fetchProducts();
+
+        // This test will:
+        // ❌ Make real network calls (slow, unreliable)
+        // ❌ Require the provider service running (complex setup)
+        // ❌ Fail if network is down (flaky)
+    }
+}
+```
+
+**3. Configuration Nightmare**
+```java
+// Different environments need different configs
+public class ProductServiceClient {
+    public ProductServiceClient() {
+        // Which URL to use?
+        // Development: http://localhost:9000
+        // Staging: http://staging-api.company.com
+        // Production: http://api.company.com
+
+        // Hardcoded = disaster!
+        this.baseUrl = "http://localhost:9000"; // Won't work in production!
+    }
+}
+```
+
+**4. Code Duplication**
+```java
+// Multiple classes need RestTemplate
+public class ProductServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Duplicate!
+}
+
+public class OrderServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Duplicate!
+}
+
+public class PaymentServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Duplicate!
+}
+
+// Creating 3 RestTemplate instances when 1 shared instance would work!
+```
+
+**5. Complex Dependency Graphs**
+```java
+// Controller depends on Service
+public class ProductCatalogueController {
+    private ProductServiceClient client;
+
+    public ProductCatalogueController() {
+        // Service depends on RestTemplate
+        RestTemplate restTemplate = new RestTemplate();
+        this.client = new ProductServiceClient(restTemplate);
+        // Now what if ProductServiceClient needs MORE dependencies?
+        // We have to change the controller!
+    }
+}
+
+// Real-world example with deep dependency tree:
+public class OrderController {
+    public OrderController() {
+        // Create 10+ objects in correct order
+        DatabaseConnection db = new DatabaseConnection(...);
+        UserRepository userRepo = new UserRepositoryImpl(db);
+        ProductRepository productRepo = new ProductRepositoryImpl(db);
+        InventoryService inventoryService = new InventoryService(productRepo);
+        PaymentGateway paymentGateway = new StripeGateway(...);
+        EmailService emailService = new SmtpEmailService(...);
+        SmsService smsService = new TwilioSmsService(...);
+        NotificationService notificationService = new NotificationService(emailService, smsService);
+        OrderService orderService = new OrderService(userRepo, productRepo, inventoryService, paymentGateway, notificationService);
+        // Exhausting! And fragile!
+    }
+}
+```
+
+**6. Lifecycle Management**
+```java
+public class DatabaseConnection {
+    private Connection connection;
+
+    public DatabaseConnection() {
+        this.connection = DriverManager.getConnection(...);
+    }
+
+    // Who closes the connection?
+    // When?
+    // What if multiple objects use the same connection?
+    // Memory leaks everywhere!
+}
+```
+
+---
+
+### Era 2: Factory Pattern (Better, But Still Tedious)
+
+```java
+// ServiceFactory.java
+public class ServiceFactory {
+    private static RestTemplate restTemplate;
+
+    public static synchronized RestTemplate getRestTemplate() {
+        if (restTemplate == null) {
+            restTemplate = new RestTemplate();
+        }
+        return restTemplate;
+    }
+
+    public static ProductServiceClient getProductServiceClient() {
+        return new ProductServiceClient(getRestTemplate());
+    }
+}
+
+// Usage
+public class ProductCatalogueController {
+    private ProductServiceClient client = ServiceFactory.getProductServiceClient();
+}
+```
+
+**Still problematic:**
+- Factories need manual maintenance
+- Testing still difficult (static methods)
+- Configuration still hardcoded
+- Boilerplate code everywhere
+
+---
+
+### Era 3: Dependency Injection with Annotations (Modern Solution)
+
+**How Annotations Solve All These Problems:**
+
+#### Problem 1: Tight Coupling → SOLVED
+
+**Before:**
+```java
+public class ProductServiceClient {
+    // Tightly coupled to RestTemplate
+    private RestTemplate restTemplate = new RestTemplate();
+}
+```
+
+**After:**
+```java
+@Service
+public class ProductServiceClient {
+    // Loosely coupled - Spring injects ANY RestTemplate bean
+    @Autowired
+    private RestTemplate restTemplate;
+}
+
+// Configuration
+@Configuration
+public class AppConfig {
+    @Bean
+    public RestTemplate restTemplate() {
+        // Want to change implementation? Just change this bean!
+        return new RestTemplate(); // Or WebClient, or MockRestTemplate, etc.
+    }
+}
+```
+
+**Want to switch implementations? Change only ONE place:**
+```java
+@Configuration
+public class AppConfig {
+    @Bean
+    public RestTemplate restTemplate() {
+        // Changed from RestTemplate to custom implementation
+        return new CustomRestTemplateWithRetry(); // Changed once, affects everywhere!
+    }
+}
+```
+
+#### Problem 2: Testing Difficulties → SOLVED
+
+**Before (Impossible to Test):**
+```java
+public class ProductServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Can't mock!
+
+    public List<Product> fetchProducts() {
+        return restTemplate.getForObject(...); // Makes REAL HTTP calls
+    }
+}
+```
+
+**After (Easy to Test):**
 ```java
 @Service
 public class ProductServiceClient {
     @Autowired
-    private RestTemplate restTemplate; // Spring injects this!
+    private RestTemplate restTemplate; // Can inject mock!
+
+    public List<Product> fetchProducts() {
+        return restTemplate.getForObject(...);
+    }
+}
+
+// Test
+@SpringBootTest
+class ProductServiceClientTest {
+    @MockBean  // Spring annotation - replaces real bean with mock
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private ProductServiceClient client;
+
+    @Test
+    void testFetchProducts() {
+        // Mock the HTTP call - no real network needed!
+        when(restTemplate.getForObject(anyString(), eq(ProductServiceResponse.class)))
+            .thenReturn(new ProductServiceResponse(Arrays.asList(
+                new Product(1L, "Test Product", "CREDIT_CARD")
+            )));
+
+        List<Product> products = client.fetchProducts();
+
+        assertThat(products, hasSize(1));
+        // ✅ Fast (milliseconds)
+        // ✅ Reliable (no network)
+        // ✅ Isolated (no external dependencies)
+    }
 }
 ```
 
-**Benefits:**
-- **Loose coupling**: Spring creates and injects the object
-- **Testability**: Easy to inject mocks in tests
-- **Single responsibility**: Objects don't manage their dependencies
-- **Centralized configuration**: Spring container manages everything
-- **Lifecycle management**: Spring handles creation and destruction
+#### Problem 3: Configuration Management → SOLVED
 
-### Dependency Injection Explained
+**Before (Hardcoded):**
+```java
+public class ProductServiceClient {
+    private String baseUrl = "http://localhost:9000"; // Hardcoded!
+}
+```
 
+**After (Externalized):**
+```java
+@Service
+public class ProductServiceClient {
+    @Value("${serviceClients.products.baseUrl}") // Injected from config!
+    private String baseUrl;
+}
+```
+
+**Configuration files:**
+```properties
+# application.properties (default)
+serviceClients.products.baseUrl=http://localhost:9000
+
+# application-dev.properties
+serviceClients.products.baseUrl=http://dev-api.company.com
+
+# application-prod.properties
+serviceClients.products.baseUrl=http://api.company.com
+```
+
+**Run with different profiles:**
+```bash
+# Development
+java -jar app.jar --spring.profiles.active=dev
+
+# Production
+java -jar app.jar --spring.profiles.active=prod
+```
+
+#### Problem 4: Code Duplication → SOLVED
+
+**Before (Duplicate Objects):**
+```java
+public class ProductServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Instance 1
+}
+
+public class OrderServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Instance 2
+}
+
+public class PaymentServiceClient {
+    private RestTemplate restTemplate = new RestTemplate(); // Instance 3
+}
+```
+
+**After (Shared Singleton):**
+```java
+@Configuration
+public class AppConfig {
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate(); // Created ONCE by Spring
+    }
+}
+
+@Service
+public class ProductServiceClient {
+    @Autowired
+    private RestTemplate restTemplate; // Shared instance
+}
+
+@Service
+public class OrderServiceClient {
+    @Autowired
+    private RestTemplate restTemplate; // Same instance!
+}
+
+@Service
+public class PaymentServiceClient {
+    @Autowired
+    private RestTemplate restTemplate; // Same instance!
+}
+```
+
+**Spring creates ONE RestTemplate and injects it everywhere:**
+```
+┌─────────────────────────────────────┐
+│     Spring IoC Container            │
+│                                     │
+│  ┌──────────────┐                  │
+│  │ RestTemplate │ (Single instance)│
+│  │    Bean      │                  │
+│  └──────┬───────┘                  │
+│         │                           │
+│         │ Injected into:            │
+│         ├──> ProductServiceClient  │
+│         ├──> OrderServiceClient    │
+│         └──> PaymentServiceClient  │
+└─────────────────────────────────────┘
+```
+
+#### Problem 5: Complex Dependency Graphs → SOLVED
+
+**Before (Constructor Hell):**
+```java
+public class OrderController {
+    public OrderController() {
+        DatabaseConnection db = new DatabaseConnection(...);
+        UserRepository userRepo = new UserRepositoryImpl(db);
+        ProductRepository productRepo = new ProductRepositoryImpl(db);
+        EmailService emailService = new SmtpEmailService(...);
+        OrderService orderService = new OrderService(userRepo, productRepo, emailService);
+        // 50 lines of constructor code!
+    }
+}
+```
+
+**After (Automatic Wiring):**
+```java
+@RestController
+public class OrderController {
+    @Autowired
+    private OrderService orderService; // Spring figures out the dependency graph!
+
+    // Spring automatically:
+    // 1. Creates DatabaseConnection
+    // 2. Creates UserRepository (injecting DatabaseConnection)
+    // 3. Creates ProductRepository (injecting DatabaseConnection)
+    // 4. Creates EmailService
+    // 5. Creates OrderService (injecting all of the above)
+    // 6. Injects OrderService into this controller
+    // All automatic!
+}
+```
+
+**Dependency Graph (Spring manages automatically):**
+```
+OrderController
+    └── OrderService
+            ├── UserRepository
+            │       └── DatabaseConnection
+            ├── ProductRepository
+            │       └── DatabaseConnection (same instance!)
+            └── EmailService
+```
+
+#### Problem 6: Lifecycle Management → SOLVED
+
+**Before (Manual Management):**
+```java
+public class Application {
+    public static void main(String[] args) {
+        DatabaseConnection db = new DatabaseConnection();
+        ProductRepository repo = new ProductRepositoryImpl(db);
+
+        // Application runs...
+
+        // Who closes the database connection?
+        // When?
+        // Memory leak!
+    }
+}
+```
+
+**After (Spring Manages Lifecycle):**
+```java
+@Service
+public class DatabaseService {
+    private Connection connection;
+
+    @PostConstruct // Spring calls AFTER construction
+    public void init() {
+        this.connection = DriverManager.getConnection(...);
+        System.out.println("Database connection opened");
+    }
+
+    @PreDestroy // Spring calls BEFORE destruction
+    public void cleanup() {
+        if (connection != null) {
+            connection.close();
+            System.out.println("Database connection closed");
+        }
+    }
+}
+```
+
+**Spring automatically:**
+1. Creates beans in correct order
+2. Calls `@PostConstruct` after injection
+3. Manages bean scope (singleton, prototype, request, session)
+4. Calls `@PreDestroy` before shutdown
+5. Handles circular dependencies
+
+---
+
+### What Are Annotations?
+
+**Annotations are metadata** that provide information about code to:
+- The compiler (compile-time)
+- Build tools (build-time)
+- Frameworks like Spring (runtime)
+
+**Syntax:**
+```java
+@AnnotationName
+@AnnotationWithValue("value")
+@AnnotationWithMultipleValues(name = "John", age = 30)
+```
+
+**Built-in Java Annotations:**
+```java
+@Override          // Compiler checks method overrides parent
+@Deprecated        // Marks code as obsolete
+@SuppressWarnings  // Tells compiler to ignore warnings
+```
+
+**Spring Annotations (Runtime Metadata):**
+```java
+@Service           // "This class is a service bean"
+@Autowired         // "Inject a dependency here"
+@Value             // "Inject a property value here"
+```
+
+**How Spring Uses Annotations:**
+```
+┌────────────────────────────────────────┐
+│  1. Application Startup                │
+│                                        │
+│  Spring scans all classes              │
+│  Looking for annotations:              │
+│  - @Service                            │
+│  - @Controller                         │
+│  - @Repository                         │
+│  - @Component                          │
+└────────────┬───────────────────────────┘
+             │
+             v
+┌────────────────────────────────────────┐
+│  2. Bean Creation                      │
+│                                        │
+│  For each annotated class:             │
+│  - Create instance                     │
+│  - Register in IoC container           │
+│  - Assign bean name                    │
+└────────────┬───────────────────────────┘
+             │
+             v
+┌────────────────────────────────────────┐
+│  3. Dependency Injection               │
+│                                        │
+│  For each @Autowired field:            │
+│  - Find matching bean                  │
+│  - Inject into field                   │
+└────────────┬───────────────────────────┘
+             │
+             v
+┌────────────────────────────────────────┐
+│  4. Application Ready                  │
+│                                        │
+│  All beans created and wired           │
+│  Application can handle requests       │
+└────────────────────────────────────────┘
+```
+
+---
+
+### Real-World Comparison
+
+**Scenario: E-commerce application with 50 classes**
+
+| Aspect | Manual Creation | With Annotations |
+|--------|----------------|------------------|
+| **Lines of boilerplate** | ~500 lines of object creation | ~50 annotations |
+| **Configuration files** | 10+ XML files | 1-2 properties files |
+| **Time to add new dependency** | Modify 5-10 classes | Add 1 annotation |
+| **Test setup complexity** | 20+ lines per test | 3-5 lines per test |
+| **Refactoring difficulty** | High (ripple effects) | Low (change once) |
+| **Onboarding time** | Days (understand object graph) | Hours (understand annotations) |
+
+---
+
+### Dependency Injection Visualized
+
+**Without DI (Manual):**
+```
+┌─────────────────────────────────┐
+│     ProductServiceClient        │
+│                                 │
+│  new RestTemplate()   ─────┐   │
+│  new Logger()        ──────┼───┼─> ProductServiceClient CONTROLS
+│  new Config()       ───────┘   │   everything (tight coupling)
+│                                 │
+└─────────────────────────────────┘
+```
+
+**With DI (Spring):**
 ```
 ┌─────────────────────────────────────┐
 │     Spring IoC Container            │
@@ -80,14 +975,34 @@ public class ProductServiceClient {
 │  │    Bean      │                  │
 │  └──────────────┘                  │
 │         │                           │
-│         │ Injects                   │
+│         │ Injects (loose coupling) │
 │         ↓                           │
 │  ┌──────────────────────┐          │
 │  │ ProductServiceClient │          │
-│  │        Bean          │          │
+│  │   @Autowired         │          │
+│  │   RestTemplate       │          │
 │  └──────────────────────┘          │
 └─────────────────────────────────────┘
+
+ProductServiceClient RECEIVES dependencies
+(doesn't control creation)
 ```
+
+---
+
+### Summary: Why Annotations Are Essential
+
+| Problem | Solution |
+|---------|----------|
+| **Tight coupling** | `@Autowired` - Spring injects implementations |
+| **Hard to test** | `@MockBean` - Easy to inject mocks |
+| **Hardcoded config** | `@Value` - Externalized configuration |
+| **Code duplication** | `@Bean` - Shared singletons |
+| **Complex dependencies** | `@Service` + `@Autowired` - Auto-wiring |
+| **Lifecycle management** | `@PostConstruct` + `@PreDestroy` - Spring manages |
+| **Boilerplate code** | `@SpringBootApplication` - Auto-configuration |
+
+**Annotations transform Java from verbose, coupled, hard-to-test code into clean, modular, testable applications.**
 
 ---
 
